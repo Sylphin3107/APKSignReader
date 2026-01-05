@@ -1,45 +1,61 @@
-name: Build
+name: Android Build
 
+# Chạy khi có push vào main hoặc tạo PR vào main
 on:
   push:
-    paths:
-      - '.github/workflows/build.yml'
-      - 'app/**'
-      - 'gradle/**'
-      - '*.gradle'
-  workflow_dispatch:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
 
 jobs:
   build:
-    name: Build
-    runs-on: ubuntu-20.04
+    # Chạy trên GitHub hosted runner ubuntu
+    runs-on: ubuntu-latest
+
     steps:
+      # Checkout code
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Setup Java
-        uses: actions/setup-java@v3
+      # Set up JDK (Android cần Java)
+      - name: Set up JDK
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
-          java-version: '11'
+          java-version: '17'
 
-      - name: Cache
+      # Cấp quyền chạy cho Gradle wrapper
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      # Cache Gradle dependencies để tăng tốc build
+      - name: Cache Gradle packages
         uses: actions/cache@v3
         with:
           path: |
-            ~/.gradle/caches/
-            ~/.gradle/wrapper/dists/
-          key: ${{ hashFiles('gradle/wrapper/gradle-wrapper.properties') }}
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-cache-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: gradle-cache-${{ runner.os }}-
 
-      - name: Build with Gradle
-        run: | 
-          ./gradlew assemble
-          echo "version=$(grep versionName ./app/build.gradle | awk '{print $2}' | tr -d \")" >> $GITHUB_ENV
-          echo "commit=$(echo ${{ github.sha }} | cut -c 1-7)" >> $GITHUB_ENV
+      # Build debug & release
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug
 
-      - name: Upload APK
+      - name: Build Release APK
+        run: ./gradlew assembleRelease
+
+      # Upload artifact để download APK sau build
+      - name: Upload Debug APK
         uses: actions/upload-artifact@v3
         with:
-          name: APKKiller(v${{ env.version }}@${{ env.commit }})
-          path: app/build/outputs/apk/**/app-*.apk
+          name: debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v3
+        with:
+          name: release-apk
+          path: app/build/outputs/apk/release/*.apk
